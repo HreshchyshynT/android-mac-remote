@@ -5,7 +5,9 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -36,17 +38,11 @@ import com.threshchyshyn.androidmacremote.discover.model.toMetadataList
 import com.threshchyshyn.androidmacremote.discover.model.toScannedBleDevice
 import timber.log.Timber
 
-
-internal class DiscoverBLEState(
-    val bluetoothAdapter: BluetoothAdapter,
-)
-
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 internal fun DiscoverBLEScreen(
     bluetoothAdapter: BluetoothAdapter,
 ) {
-    val state = remember { DiscoverBLEState(bluetoothAdapter) }
     val isBluetoothEnabled = isBluetoothEnabled(bluetoothAdapter.isEnabled)
 
     Column(
@@ -60,22 +56,14 @@ internal fun DiscoverBLEScreen(
             style = MaterialTheme.typography.titleMedium,
         )
         val locationPermission = rememberMultiplePermissionsState(
-            listOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
-        ) {
-            Timber.d("Location permission callback: $it")
-            if (it.any { (_, isGranted) -> isGranted }) {
-
-            }
-        }
+            listOf(Manifest.permission.ACCESS_FINE_LOCATION),
+            onPermissionsResult = { Timber.d("Location permission callback: $it") },
+        )
 
         val bluetoothPermission = rememberMultiplePermissionsState(
-            listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
-        ) {
-            Timber.d("Bluetooth permission callback: $it")
-            if (it.any { (_, isGranted) -> isGranted }) {
-
-            }
-        }
+            listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN),
+            onPermissionsResult = { Timber.d("Bluetooth permission callback: $it") },
+        )
 
         val isLocationGranted = locationPermission.allPermissionsGranted
         val isBluetoothPermissionGranted = bluetoothPermission.allPermissionsGranted
@@ -175,9 +163,20 @@ private fun scanForDevices(scanner: BluetoothLeScanner): List<ScannedBleDevice> 
                 }
             }
         }
-        scanner.startScan(callback)
+        scanner.startScan(
+            listOf(
+                ScanFilter.Builder()
+                    .build()
+            ),
+            ScanSettings.Builder()
+                .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+                .setMatchMode(ScanSettings.MATCH_MODE_STICKY)
+                .build(),
+            callback,
+        )
         Timber.d("scan started")
         onDispose {
+            Timber.d("scan stopped")
             scanner.stopScan(callback)
             // Stop scanning for devices
         }
