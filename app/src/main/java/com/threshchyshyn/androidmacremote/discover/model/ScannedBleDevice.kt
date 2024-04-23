@@ -37,7 +37,7 @@ fun BluetoothDevice.toMetadataList(): List<String> {
 fun ScanRecord.toMetadataList(): List<String> {
     return listOf(
         "Advertise Flags: $advertiseFlags",
-        "Service UUIDs: ${serviceUuids.joinToString()}",
+        "Service UUIDs: ${serviceUuids?.joinToString()}",
         "Manufacturer Specific Data: $manufacturerSpecificData",
         "Service Data: $serviceData",
         "Tx Power Level: $txPowerLevel",
@@ -48,7 +48,7 @@ fun ScanRecord.toMetadataList(): List<String> {
 
 fun ScanResult.toMetadataList(): List<String> {
     return listOf(
-        "Device: ${device.toMetadataList()}",
+        "Device: ${device?.toMetadataList()}",
         "Scan Record: ${scanRecord?.toMetadataList()}",
         "RSSI: $rssi",
         "Timestamp Nanos: $timestampNanos",

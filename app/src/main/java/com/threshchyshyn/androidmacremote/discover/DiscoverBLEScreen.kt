@@ -12,6 +12,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.ParcelUuid
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -34,8 +36,9 @@ import androidx.compose.ui.unit.dp
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.threshchyshyn.androidmacremote.discover.model.ScannedBleDevice
-import com.threshchyshyn.androidmacremote.discover.model.toMetadataList
 import com.threshchyshyn.androidmacremote.discover.model.toScannedBleDevice
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -56,7 +59,7 @@ internal fun DiscoverBLEScreen(
             style = MaterialTheme.typography.titleMedium,
         )
         val locationPermission = rememberMultiplePermissionsState(
-            listOf(Manifest.permission.ACCESS_FINE_LOCATION),
+            listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
             onPermissionsResult = { Timber.d("Location permission callback: $it") },
         )
 
@@ -112,7 +115,9 @@ internal fun DiscoverBLEScreen(
                 items(scannedBleDevices) { scannedBleDevice ->
                     ScannedItem(
                         scannedBleDevice,
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier
+                            .padding(vertical = 4.dp)
+                            .clickable { },
                     )
                 }
             }
@@ -145,40 +150,44 @@ private fun isBluetoothEnabled(initialState: Boolean): Boolean {
 @Composable
 private fun scanForDevices(scanner: BluetoothLeScanner): List<ScannedBleDevice> {
     val results = remember { mutableStateOf(emptyList<ScannedBleDevice>()) }
+    val coroutineScope = rememberCoroutineScope()
     DisposableEffect(Unit) {
         // Start scanning for devices
         val callback = object : ScanCallback() {
+            private val resultsAddresses = mutableSetOf<String>()
             override fun onScanFailed(errorCode: Int) {
                 Timber.e("onScanFailed: $errorCode")
             }
 
             override fun onScanResult(callbackType: Int, result: ScanResult?) {
-                Timber.d("onScanResult: ${result?.toMetadataList()}")
-            }
-
-            override fun onBatchScanResults(scanResults: MutableList<ScanResult>?) {
-                Timber.d("onBatchScanResults: $scanResults")
-                if (scanResults != null) {
-                    results.value = scanResults.map(ScanResult::toScannedBleDevice)
-                }
+                Timber.d("onScanResult: $callbackType - $result")
+                if (result == null || resultsAddresses.contains(result.device.address)) return
+                resultsAddresses.add(result.device.address)
+                results.value = results.value.toMutableList() + result.toScannedBleDevice()
             }
         }
         scanner.startScan(
             listOf(
                 ScanFilter.Builder()
+                    .setServiceUuid(ParcelUuid.fromString("12345678-1234-1234-1234-1234567890AB"))
                     .build()
             ),
             ScanSettings.Builder()
                 .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
-                .setMatchMode(ScanSettings.MATCH_MODE_STICKY)
+                .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
                 .build(),
             callback,
         )
         Timber.d("scan started")
-        onDispose {
-            Timber.d("scan stopped")
+        coroutineScope.launch {
+            delay(10_000)
+            Timber.d("stop scan, flush pending results")
             scanner.stopScan(callback)
-            // Stop scanning for devices
+            scanner.flushPendingScanResults(callback)
+        }
+        onDispose {
+            Timber.d("onDispose")
+            scanner.stopScan(callback)
         }
     }
     return results.value
