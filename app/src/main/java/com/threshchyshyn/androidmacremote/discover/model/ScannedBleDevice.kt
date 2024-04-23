@@ -6,17 +6,19 @@ import android.bluetooth.le.ScanRecord
 import android.bluetooth.le.ScanResult
 
 data class ScannedBleDevice(
-    val name: String,
-    val address: String,
+    val device: BluetoothDevice,
     val rssi: Int,
     val metadata: List<String>,
-)
+) {
+    @SuppressLint("MissingPermission")
+    val name: String = device.name ?: "Unknown"
+    val address: String = device.address ?: "Unknown"
+}
 
 @SuppressLint("MissingPermission")
 fun ScanResult.toScannedBleDevice(): ScannedBleDevice {
     return ScannedBleDevice(
-        name = device?.name ?: "Unknown",
-        address = device?.address ?: "Unknown",
+        device = device,
         rssi = rssi,
         metadata = toMetadataList(),
     )

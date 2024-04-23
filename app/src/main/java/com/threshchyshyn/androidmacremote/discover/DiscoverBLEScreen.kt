@@ -45,6 +45,7 @@ import timber.log.Timber
 @Composable
 internal fun DiscoverBLEScreen(
     bluetoothAdapter: BluetoothAdapter,
+    onDeviceSelected: (ScannedBleDevice) -> Unit,
 ) {
     val isBluetoothEnabled = isBluetoothEnabled(bluetoothAdapter.isEnabled)
 
@@ -117,7 +118,7 @@ internal fun DiscoverBLEScreen(
                         scannedBleDevice,
                         modifier = Modifier
                             .padding(vertical = 4.dp)
-                            .clickable { },
+                            .clickable { onDeviceSelected(scannedBleDevice) },
                     )
                 }
             }
