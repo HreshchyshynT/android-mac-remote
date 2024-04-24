@@ -1,36 +1,43 @@
 package com.threshchyshyn.androidmacremote.discover
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
-import android.bluetooth.le.BluetoothLeScanner
-import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
-import android.bluetooth.le.ScanResult
-import android.bluetooth.le.ScanSettings
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.ParcelUuid
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -38,10 +45,7 @@ import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.threshchyshyn.androidmacremote.destinations.TogglePlaybackScreenDestination
-import com.threshchyshyn.androidmacremote.discover.model.ScannedBleDevice
-import com.threshchyshyn.androidmacremote.discover.model.toScannedBleDevice
 import com.threshchyshyn.androidmacremote.remote.TogglePlaybackScreenArgs
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -110,15 +114,16 @@ internal fun DiscoverBLEScreen(
                 .padding(vertical = 8.dp)
         )
         if (isBluetoothEnabled && isLocationGranted && isBluetoothPermissionGranted) {
-            Text(
-                "Scanning for devices...",
-                style = MaterialTheme.typography.titleMedium,
+            val scanner = remember { ComposableBLEScanner(bluetoothAdapter.bluetoothLeScanner) }
+
+            LaunchedEffect(Unit) { scanner.scan() }
+
+            ScannerTitle(
+                scanner = scanner,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             )
-
-            val scannedBleDevices = scanForDevices(bluetoothAdapter.bluetoothLeScanner)
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(scannedBleDevices) { scannedBleDevice ->
+                items(scanner.scanResults) { scannedBleDevice ->
                     ScannedItem(
                         scannedBleDevice,
                         modifier = Modifier
@@ -129,6 +134,53 @@ internal fun DiscoverBLEScreen(
                             },
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScannerTitle(scanner: ComposableBLEScanner, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth()) {
+        Text(
+            when (scanner.scanState) {
+                ScanState.Idle -> "Scanner is idle"
+                ScanState.Scanning -> "Scanning for devices"
+                ScanState.Completed -> "Scanning completed"
+            },
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.align(Alignment.Center),
+        )
+
+        var iconRotation by remember { mutableFloatStateOf(0f) }
+        val coroutineScope = rememberCoroutineScope()
+        val scanState by rememberUpdatedState(scanner.scanState)
+        Icon(
+            Icons.Default.Refresh,
+            contentDescription = "Refresh",
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .clickable {
+                    Timber.d("scanState: $scanState")
+                    if (scanState != ScanState.Scanning) {
+                        coroutineScope.launch { scanner.scan() }
+                    }
+                }
+                .graphicsLayer { rotationZ = iconRotation },
+        )
+        LaunchedEffect(scanState.isScanning) {
+            Timber.d("launch effect scanState: $scanState")
+            val isScanning = scanner.scanState.isScanning
+            animate(
+                iconRotation,
+                targetValue = 360f,
+                animationSpec = when (isScanning) {
+                    true -> infiniteRepeatable(animation = tween(durationMillis = 750, easing = LinearEasing))
+                    false -> tween(durationMillis = 300)
+                }
+            ) { value, _ ->
+                // when animation ends value will be 360f so we need to reset it to 0f to be able to animate again
+                iconRotation = value % 360f
             }
         }
     }
@@ -153,53 +205,6 @@ private fun isBluetoothEnabled(initialState: Boolean): Boolean {
     }
 
     return isEnabledState.value
-}
-
-@SuppressLint("MissingPermission")
-@Composable
-private fun scanForDevices(scanner: BluetoothLeScanner): List<ScannedBleDevice> {
-    val results = remember { mutableStateOf(emptyList<ScannedBleDevice>()) }
-    val coroutineScope = rememberCoroutineScope()
-    DisposableEffect(Unit) {
-        // Start scanning for devices
-        val callback = object : ScanCallback() {
-            private val resultsAddresses = mutableSetOf<String>()
-            override fun onScanFailed(errorCode: Int) {
-                Timber.e("onScanFailed: $errorCode")
-            }
-
-            override fun onScanResult(callbackType: Int, result: ScanResult?) {
-                Timber.d("onScanResult: $callbackType - $result")
-                if (result == null || resultsAddresses.contains(result.device.address)) return
-                resultsAddresses.add(result.device.address)
-                results.value = results.value.toMutableList() + result.toScannedBleDevice()
-            }
-        }
-        scanner.startScan(
-            listOf(
-                ScanFilter.Builder()
-                    .setServiceUuid(ParcelUuid.fromString("12345678-1234-1234-1234-1234567890AB"))
-                    .build()
-            ),
-            ScanSettings.Builder()
-                .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
-                .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
-                .build(),
-            callback,
-        )
-        Timber.d("scan started")
-        coroutineScope.launch {
-            delay(10_000)
-            Timber.d("stop scan, flush pending results")
-            scanner.stopScan(callback)
-            scanner.flushPendingScanResults(callback)
-        }
-        onDispose {
-            Timber.d("onDispose")
-            scanner.stopScan(callback)
-        }
-    }
-    return results.value
 }
 
 private val Intent.isBluetoothEnabled
