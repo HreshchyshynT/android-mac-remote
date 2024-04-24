@@ -1,11 +1,7 @@
-package com.threshchyshyn.androidmacremote
+package com.threshchyshyn.androidmacremote.remote
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattCallback
-import android.bluetooth.BluetoothGattCharacteristic
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,7 +20,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,109 +27,24 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.ramcosta.composedestinations.annotation.Destination
 import com.threshchyshyn.androidmacremote.discover.model.ScannedBleDevice
 import timber.log.Timber
-import java.util.UUID
 
-private enum class ConnectionState {
-    Connected,
-    Disconnected,
-}
+data class TogglePlaybackScreenArgs(
+    val scannedBleDevice: ScannedBleDevice,
+)
 
-private const val CHARACTERISTIC_UUID = "abcd1234-5678-1234-5678-1234567890ab"
-private const val SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab"
-
-@SuppressLint("MissingPermission")
-private class MyGattCallback : BluetoothGattCallback() {
-    private val _isServiceDiscovered = mutableStateOf(false)
-    val isServiceDiscovered get() = _isServiceDiscovered.value
-
-    private val _isWriteSuccess = mutableStateOf(false)
-    val isWriteSuccess get() = _isWriteSuccess.value
-
-    private val _connectionState = mutableStateOf(ConnectionState.Disconnected)
-    val connectionState get() = _connectionState.value
-
-    private var savedGatt: BluetoothGatt? = null
-
-
-    override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
-        super.onConnectionStateChange(gatt, status, newState)
-        Timber.d("onConnectionStateChange: status=$status, newState=$newState, gatt=$gatt")
-        when (newState) {
-            BluetoothGatt.STATE_CONNECTED -> {
-                _connectionState.value = ConnectionState.Connected
-                savedGatt = gatt
-                gatt?.discoverServices()
-            }
-
-            BluetoothGatt.STATE_DISCONNECTED -> {
-                _connectionState.value = ConnectionState.Disconnected
-                savedGatt = null
-            }
-        }
-        Timber.d("gatt in the end: $gatt")
-    }
-
-    override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
-        super.onServicesDiscovered(gatt, status)
-        Timber.d("onServicesDiscovered: status=$status")
-        _isServiceDiscovered.value = status == BluetoothGatt.GATT_SUCCESS
-    }
-
-    override fun onCharacteristicWrite(
-        gatt: BluetoothGatt?,
-        characteristic: BluetoothGattCharacteristic?,
-        status: Int,
-    ) {
-        super.onCharacteristicWrite(gatt, characteristic, status)
-        Timber.d("onCharacteristicWrite: status=$status, characteristic uuid=${characteristic?.uuid}")
-        if (characteristic != null && characteristic.uuid.toString() == CHARACTERISTIC_UUID) {
-            _isWriteSuccess.value = status == BluetoothGatt.GATT_SUCCESS
-        }
-    }
-
-    fun togglePlaying() {
-        Timber.d("saved GATT: $savedGatt")
-        if (savedGatt == null) Timber.e("Gatt is null when trying to toggle playing")
-        val gatt = savedGatt ?: return
-        val service = gatt.getService(UUID.fromString(SERVICE_UUID))
-        if (service == null) {
-            Timber.e("Service not found")
-            return
-        }
-        val characteristic = service.getCharacteristic(UUID.fromString(CHARACTERISTIC_UUID))
-        if (characteristic == null) {
-            Timber.e("Characteristic not found")
-            return
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            gatt.writeCharacteristic(
-                characteristic,
-                byteArrayOf(0x01),
-                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
-            )
-        } else {
-            characteristic.value = byteArrayOf(0x01)
-            gatt.writeCharacteristic(characteristic)
-        }
-        Timber.d("characteristic written")
-    }
-
-    fun disconnect() {
-        savedGatt?.disconnect()
-    }
-}
-
+@Destination(navArgsDelegate = TogglePlaybackScreenArgs::class)
 @SuppressLint("MissingPermission")
 @Composable
 internal fun TogglePlaybackScreen(
-    scannedBleDevice: ScannedBleDevice,
+    args: TogglePlaybackScreenArgs,
 ) {
     val context = LocalContext.current
-    val gattCallback = remember { MyGattCallback() }
+    val gattCallback = remember { TogglePlaybackGattCallback() }
     DisposableEffect(Unit) {
-        scannedBleDevice.device.connectGatt(
+        args.scannedBleDevice.device.connectGatt(
             context,
             true,
             gattCallback,
@@ -152,12 +62,12 @@ internal fun TogglePlaybackScreen(
             .padding(vertical = 8.dp, horizontal = 16.dp),
     ) {
         Text(
-            text = "Connect to Device: ${scannedBleDevice.name}",
+            text = "Connect to Device: ${args.scannedBleDevice.name}",
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.align(Alignment.CenterHorizontally),
         )
         Text(
-            text = "MAC Address: ${scannedBleDevice.address}",
+            text = "MAC Address: ${args.scannedBleDevice.address}",
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(vertical = 8.dp),
         )

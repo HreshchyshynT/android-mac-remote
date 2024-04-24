@@ -35,17 +35,22 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.ramcosta.composedestinations.annotation.Destination
+import com.ramcosta.composedestinations.navigation.DestinationsNavigator
+import com.threshchyshyn.androidmacremote.destinations.TogglePlaybackScreenDestination
 import com.threshchyshyn.androidmacremote.discover.model.ScannedBleDevice
 import com.threshchyshyn.androidmacremote.discover.model.toScannedBleDevice
+import com.threshchyshyn.androidmacremote.remote.TogglePlaybackScreenArgs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
+@Destination(start = true)
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 internal fun DiscoverBLEScreen(
     bluetoothAdapter: BluetoothAdapter,
-    onDeviceSelected: (ScannedBleDevice) -> Unit,
+    navigator: DestinationsNavigator,
 ) {
     val isBluetoothEnabled = isBluetoothEnabled(bluetoothAdapter.isEnabled)
 
@@ -118,7 +123,10 @@ internal fun DiscoverBLEScreen(
                         scannedBleDevice,
                         modifier = Modifier
                             .padding(vertical = 4.dp)
-                            .clickable { onDeviceSelected(scannedBleDevice) },
+                            .clickable {
+                                val args = TogglePlaybackScreenArgs(scannedBleDevice)
+                                navigator.navigate(TogglePlaybackScreenDestination(args))
+                            },
                     )
                 }
             }

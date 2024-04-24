@@ -4,14 +4,21 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.le.ScanRecord
 import android.bluetooth.le.ScanResult
+import android.os.Parcelable
+import kotlinx.parcelize.IgnoredOnParcel
+import kotlinx.parcelize.Parcelize
 
+@Parcelize
 data class ScannedBleDevice(
     val device: BluetoothDevice,
     val rssi: Int,
     val metadata: List<String>,
-) {
+) : Parcelable {
+    @IgnoredOnParcel
     @SuppressLint("MissingPermission")
     val name: String = device.name ?: "Unknown"
+
+    @IgnoredOnParcel
     val address: String = device.address ?: "Unknown"
 }
 
