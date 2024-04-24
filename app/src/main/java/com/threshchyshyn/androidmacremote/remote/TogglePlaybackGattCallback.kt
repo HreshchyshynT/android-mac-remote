@@ -34,7 +34,7 @@ internal class TogglePlaybackGattCallback : BluetoothGattCallback() {
 
     override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
         super.onConnectionStateChange(gatt, status, newState)
-        Timber.d("onConnectionStateChange: status=$status, newState=$newState, gatt=$gatt")
+        Timber.d("onConnectionStateChange: status=$status, newState=$newState")
         when (newState) {
             BluetoothGatt.STATE_CONNECTED -> {
                 _connectionState.value = ConnectionState.Connected
@@ -47,7 +47,6 @@ internal class TogglePlaybackGattCallback : BluetoothGattCallback() {
                 savedGatt = null
             }
         }
-        Timber.d("gatt in the end: $gatt")
     }
 
     override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
@@ -69,7 +68,6 @@ internal class TogglePlaybackGattCallback : BluetoothGattCallback() {
     }
 
     fun togglePlaying() {
-        Timber.d("saved GATT: $savedGatt")
         if (savedGatt == null) Timber.e("Gatt is null when trying to toggle playing")
         val gatt = savedGatt ?: return
         val service = gatt.getService(UUID.fromString(SERVICE_UUID))
@@ -97,5 +95,6 @@ internal class TogglePlaybackGattCallback : BluetoothGattCallback() {
 
     fun disconnect() {
         savedGatt?.disconnect()
+        Timber.d("disconnected")
     }
 }
